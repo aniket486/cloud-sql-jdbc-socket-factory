@@ -16,7 +16,6 @@
 
 package com.google.cloud.sql.core;
 
-import static com.google.common.truth.Truth.assertThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.fail;
 import static org.mockito.Matchers.anyString;
@@ -24,7 +23,6 @@ import static org.mockito.Matchers.eq;
 import static org.mockito.Matchers.isA;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
@@ -150,7 +148,8 @@ public class CoreSocketFactoryTest {
   @Test
   public void create_throwsErrorForInvalidInstanceName() throws IOException {
     CoreSocketFactory coreSocketFactory =
-        new CoreSocketFactory(clientKeyPair, credential, adminApi, 3307);
+        new CoreSocketFactory(
+            null, immediateFuture(clientKeyPair), credential, adminApi, 3307, null);
     try {
       coreSocketFactory.createSslSocket("foo", Arrays.asList("PRIMARY"));
       fail();

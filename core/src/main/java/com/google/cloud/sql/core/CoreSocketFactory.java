@@ -30,7 +30,6 @@ import com.google.cloud.sql.CredentialFactory;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
-import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningScheduledExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -105,26 +104,41 @@ public final class CoreSocketFactory {
   private final SQLAdmin adminApi;
   private final int serverProxyPort;
 
+  private CoreSocketFactory(
+      Credential credential,
+      SQLAdmin adminApi,
+      int serverProxyPort,
+      ListeningScheduledExecutorService executor) {
+    this(
+        x509(),
+        executor.submit(CoreSocketFactory::generateRsaKeyPair),
+        credential,
+        adminApi,
+        serverProxyPort,
+        executor);
+  }
+
   @VisibleForTesting
   CoreSocketFactory(
-      KeyPair localKeyPair, Credential credential, SQLAdmin adminApi, int serverProxyPort) {
-    try {
-      this.certificateFactory = CertificateFactory.getInstance("X.509");
-    } catch (CertificateException err) {
-      throw new RuntimeException("X509 implementation not available", err);
-    }
+      CertificateFactory certificateFactory,
+      ListenableFuture<KeyPair> localKeyPair,
+      Credential credential,
+      SQLAdmin adminApi,
+      int serverProxyPort,
+      ListeningScheduledExecutorService executor) {
+    this.certificateFactory = certificateFactory;
     this.credential = credential;
     this.adminApi = adminApi;
     this.serverProxyPort = serverProxyPort;
-    this.executor =
-        MoreExecutors.listeningDecorator(
-            MoreExecutors.getExitingScheduledExecutorService(
-                (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(2)));
+    this.executor = executor;
+    this.localKeyPair = localKeyPair;
+  }
 
-    if (localKeyPair != null) {
-      this.localKeyPair = Futures.immediateFuture(localKeyPair);
-    } else {
-      this.localKeyPair = executor.submit(CoreSocketFactory::generateRsaKeyPair);
+  private static CredentialFactory x509() {
+    try {
+      return CertificateFactory.getInstance("X.509");
+    } catch (CertificateException err) {
+      throw new RuntimeException("X509 implementation not available", err);
     }
   }
 
@@ -150,7 +164,13 @@ public final class CoreSocketFactory {
 
       SQLAdmin adminApi = createAdminApiClient(credential);
       coreSocketFactory =
-          new CoreSocketFactory(null, credential, adminApi, DEFAULT_SERVER_PROXY_PORT);
+          new CoreSocketFactory(
+              credential,
+              adminApi,
+              DEFAULT_SERVER_PROXY_PORT,
+              MoreExecutors.listeningDecorator(
+                  MoreExecutors.getExitingScheduledExecutorService(
+                      (ScheduledThreadPoolExecutor) Executors.newScheduledThreadPool(2))));
     }
     return coreSocketFactory;
   }
